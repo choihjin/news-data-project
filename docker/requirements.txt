@@ -1,0 +1,43 @@
+# Airflow Core
+apache-airflow==2.10.5
+
+# Airflow Providers
+apache-airflow-providers-apache-spark==5.3.0
+apache-airflow-providers-apache-kafka==1.9.0
+apache-airflow-providers-postgres==6.0.0
+# apache-airflow-providers-flink==1.0.0
+
+# Flink
+apache-flink==1.20.0
+
+# Kafka
+confluent-kafka==2.10.0
+kafka-python==2.2.10
+
+# Spark
+pyspark==3.5.4
+
+# PostgreSQL
+psycopg2-binary==2.9.9
+
+# Elasticsearch
+elasticsearch==8.17.1
+
+# HDFS
+hdfs==2.7.3
+
+# env
+python-dotenv==1.0.1
+
+# Python
+pandas==2.2.2
+numpy>=1.23.2,<1.25.0  # 버전 범위 수정
+requests==2.31.0
+feedparser==6.0.10
+openai==1.61.1
+tiktoken==0.8.0
+pydantic==2.10.6
+beautifulsoup4==4.13.3
+python-dateutil==2.9.0.post0
+sqlalchemy>=1.4.0
+pgvector>=0.2.0

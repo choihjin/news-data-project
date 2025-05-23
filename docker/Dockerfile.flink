@@ -1,0 +1,29 @@
+FROM bitnami/flink:1.20.0
+
+USER root
+
+# Python 설치
+RUN apt-get update && apt-get install -y python3 python3-pip && ln -s /usr/bin/python3 /usr/bin/python
+
+# pip install apache-flink 해결
+ENV HOME=/opt/bitnami/flink/python-home
+RUN mkdir -p $HOME && \
+    pip install --break-system-packages apache-flink
+
+# psycopg2 설치
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    python3-dev && \
+    pip install --break-system-packages \
+        psycopg2-binary \
+        openai==1.61.1 \
+        python-dotenv==1.0.1 \
+        tiktoken \
+        elasticsearch==8.17.1
+
+USER 1001
+
+# ENTRYPOINT ["/opt/bitnami/scripts/start-flink.sh"]
+
+COPY ./docker/flink-conf.yaml /opt/bitnami/flink/conf/flink-conf.yaml

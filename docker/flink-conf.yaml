@@ -1,0 +1,9 @@
+# 필수 기본 설정
+jobmanager.rpc.address: jobmanager
+
+# 메모리 명시
+jobmanager.memory.process.size: 1024m
+taskmanager.memory.process.size: 1024m
+
+# 슬롯 수
+taskmanager.numberOfTaskSlots: 2

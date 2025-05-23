@@ -1,0 +1,467 @@
+# version: "3.8"
+
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.airflow
+  env_file:
+    - .env
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+
+    # 자바 환경 변수 설정
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
+    # 하둡 환경 변수 설정
+    HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
+  volumes:
+    - ./batch/dags:/opt/airflow/dags
+    - ./batch/logs:/opt/airflow/logs
+    - ./batch/config:/opt/airflow/config
+    - ./batch/plugins:/opt/airflow/plugins
+    - ./batch/scripts:/opt/airflow/scripts
+    - ./batch/data:/opt/airflow/data
+    - ./batch/output:/opt/airflow/output
+    - ./hadoop/config:/opt/hadoop/etc/hadoop
+    - /var/run/docker.sock:/var/run/docker.sock
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  networks:
+    - shared-net
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg13
+    container_name: postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./setup/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - shared-net
+
+  redis:
+    container_name: redis
+    image: redis:7.2-bookworm
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    restart: always
+    networks:
+      - shared-net
+
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.1
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=elastic-docker-cluster
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01
+      - node.roles=master,data,ingest
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - network.host=0.0.0.0
+    volumes:
+      - ./batch/config/dictionary:/usr/share/elasticsearch/config/dictionary
+    ports:
+      - 9200:9200
+    networks:
+      - shared-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      sh -c "
+      if [ ! -d /usr/share/elasticsearch/plugins/analysis-nori ]; then
+        elasticsearch-plugin install analysis-nori --batch;
+      fi &&
+      exec /usr/local/bin/docker-entrypoint.sh elasticsearch"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.17.1
+    container_name: kibana
+    depends_on:
+      es01:
+        condition: service_healthy
+    environment:
+      - SERVER_NAME=kibana
+      - ELASTICSEARCH_HOSTS=http://es01:9200
+      - TELEMETRY_ENABLED=false
+      - MONITORING_ENABLED=false
+    ports:
+      - 5601:5601
+    networks:
+      - shared-net
+
+  airflow-webserver:
+    container_name: airflow-webserver
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  airflow-scheduler:
+    container_name: airflow-scheduler
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  airflow-worker:
+    container_name: airflow-worker
+    user: root
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}" || celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0"
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  airflow-triggerer:
+    container_name: airflow-triggerer
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  airflow-init:
+    container_name: airflow-init
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        exec /entrypoint airflow db upgrade && airflow users create --username airflow --password airflow --firstname Air --lastname Flow --role Admin --email admin@example.com
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    user: "0:0"
+    volumes:
+      - .:/sources
+    networks:
+      - shared-net
+    
+  spark-master:
+    container_name: spark-master
+    <<: *airflow-common
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spark
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master 
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    ports:
+      - "8083:8080"
+      - "7077:7077"
+    networks:
+      - shared-net
+    volumes:  
+      - ./batch/scripts:/opt/airflow/dags/scripts
+      - ./batch/output:/opt/airflow/output
+      - ./batch/data:/opt/airflow/data
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+    depends_on:
+      namenode:
+        condition: service_healthy
+      datanode:
+        condition: service_healthy
+
+  spark-worker:
+    container_name: spark-worker
+    <<: *airflow-common
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spark
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    depends_on:
+      - spark-master
+    ports:
+      - "8084:8081"
+    networks:
+      - shared-net
+    volumes:  
+      - ./batch/scripts:/opt/airflow/dags/scripts
+      - ./batch/output:/opt/airflow/output
+      - ./batch/data:/opt/airflow/data
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+
+  datanode:
+    image: apache/hadoop:3
+    container_name: datanode
+    command: >
+      sh -c "
+      mkdir -p /tmp/hadoop-root/dfs/data &&
+      chmod 755 /tmp/hadoop-root/dfs/data &&
+      hdfs datanode
+      "
+    env_file:
+      - ./hadoop/config/.config
+    volumes:
+      - datanode:/tmp/hadoop-root/dfs/data
+      - ./hadoop/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hadoop/config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+    user: root
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:9864" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - namenode
+    networks:
+      - shared-net
+
+  namenode:
+    image: apache/hadoop:3
+    container_name: namenode
+    ports:
+      - "8020:8020" # RPC
+      - "9870:9870" # 웹 UI
+    environment:
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    env_file:
+      - .env
+    volumes:
+      - ./hadoop/docker-entrypoint.sh:/opt/entrypoint.sh
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./hadoop/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hadoop/config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+    command: >
+      sh -c "
+      chmod +x /opt/entrypoint.sh &&
+      /opt/entrypoint.sh
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9870 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - shared-net
+
+  resourcemanager:
+    image: apache/hadoop:3
+    hostname: resourcemanager
+    container_name: resourcemanager
+    command: ["yarn", "resourcemanager"]
+    ports:
+      - 8088:8088
+      - 8089:8089
+    env_file:
+      - ./hadoop/config/.config
+    volumes:
+      - ./hadoop/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hadoop/config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+      - ./hadoop/config/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml
+      - ./hadoop/config/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml
+    depends_on:
+      namenode:
+        condition: service_healthy
+    networks:
+      - shared-net
+
+  nodemanager:
+    image: apache/hadoop:3
+    container_name: nodemanager
+    command: ["yarn", "nodemanager"]
+    env_file:
+      - ./hadoop/config/.config
+    volumes:
+      - ./hadoop/config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hadoop/config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+      - ./hadoop/config/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml
+      - ./hadoop/config/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml
+    depends_on:
+      resourcemanager:
+        condition: service_started
+      datanode:
+        condition: service_healthy
+    networks:
+      - shared-net
+
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_NODE_ID=${KAFKA_NODE_ID}
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:${KAFKA_BROKER_PORT},CONTROLLER://:${KAFKA_CONTROLLER_PORT}
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:${KAFKA_BROKER_PORT}
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=${KAFKA_NODE_ID}@kafka:${KAFKA_CONTROLLER_PORT}
+      - KAFKA_KRAFT_CLUSTER_ID=${KAFKA_CLUSTER_ID}
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - shared-net
+
+  jobmanager: 
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.flink
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      - FLINK_MODE=jobmanager
+      - FLINK_JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - FLINK_TASK_MANAGER_NUMBER_OF_TASK_SLOTS=2
+    volumes:
+      - flink_jobmanager_data:/bitnami/flink
+      - ./docker/flink-conf.yaml:/opt/bitnami/flink/conf/flink-conf.yaml
+      - ./batch/scripts:/opt/airflow/scripts
+      - ./batch/scripts/config/flink-sql-connector-kafka-3.3.0-1.20.jar:/opt/bitnami/flink/lib/flink-connector-kafka.jar
+    networks:
+      - shared-net
+
+  taskmanager:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.flink
+    container_name: taskmanager
+    depends_on:
+      - jobmanager
+    environment:
+      - FLINK_MODE=taskmanager
+      - FLINK_JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - FLINK_TASK_MANAGER_NUMBER_OF_TASK_SLOTS=2
+      - PYTHONPATH=/opt/airflow/scripts
+      - LANG=ko_KR.UTF-8
+      - LC_ALL=ko_KR.UTF-8
+      - PYTHONIOENCODING=utf-8
+    env_file:
+      - .env
+    volumes:
+      - flink_taskmanager_data:/bitnami/flink
+      - ./docker/flink-conf.yaml:/opt/bitnami/flink/conf/flink-conf.yaml
+      - ./batch/scripts:/opt/airflow/scripts
+      - ./batch/scripts/config/flink-sql-connector-kafka-3.3.0-1.20.jar:/opt/bitnami/flink/lib/flink-connector-kafka.jar
+    networks:
+      - shared-net
+    
+volumes:
+  postgres_data:
+  hadoop_namenode:
+  kafka_data:
+  flink_jobmanager_data:
+  flink_taskmanager_data:
+  datanode:
+
+networks:
+  shared-net:
+    driver: bridge
