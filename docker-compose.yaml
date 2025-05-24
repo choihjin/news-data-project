@@ -97,6 +97,7 @@ services:
       - network.host=0.0.0.0
     volumes:
       - ./batch/config/dictionary:/usr/share/elasticsearch/config/dictionary
+      - esdata:/usr/share/elasticsearch/data
     ports:
       - 9200:9200
     networks:
@@ -461,6 +462,7 @@ volumes:
   flink_jobmanager_data:
   flink_taskmanager_data:
   datanode:
+  esdata:
 
 networks:
   shared-net:

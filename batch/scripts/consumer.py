@@ -10,6 +10,8 @@ from elasticsearch import Elasticsearch
 from datetime import datetime
 import logging
 import sys
+from hdfs import InsecureClient
+import io
 
 # Python 경로에 scripts 디렉토리 추가
 sys.path.append('/opt/airflow/scripts')
@@ -22,11 +24,15 @@ from preprocess import (
 )
 from news_model import NewsArticle
 
+# 로그 출력을 위한 인코딩 설정
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 # 로거 설정
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    encoding='utf-8'  # 한글 인코딩 설정
+    encoding='utf-8'
 )
 logger = logging.getLogger(__name__)
 
@@ -35,6 +41,10 @@ handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
+
+# 환경 변수 설정
+import os
+os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 def get_db_connection():
     try:
@@ -46,10 +56,9 @@ def get_db_connection():
             port=5432,
             client_encoding='utf8'
         )
-        logger.info("DB 연결 성공")
         return conn
     except Exception as e:
-        logger.error(f"DB 연결 실패: {str(e)}")
+        logger.error(f"[DB] 연결 실패: {str(e)}")
         raise
 
 def get_es_client():
@@ -58,7 +67,6 @@ def get_es_client():
         index_name = "news"
         
         if not es.indices.exists(index=index_name):
-            logger.info(f"'{index_name}' 인덱스 생성 시작")
             es.indices.create(
                 index=index_name,
                 body={
@@ -124,32 +132,51 @@ def get_es_client():
                     }
                 }
             )
-            logger.info(f"'{index_name}' 인덱스 생성 완료")
         return es
     except Exception as e:
-        logger.error(f"ES 클라이언트 생성 실패: {str(e)}")
+        logger.error(f"[ES] 클라이언트 생성 실패: {str(e)}")
+        raise
+
+def get_hdfs_client():
+    try:
+        return InsecureClient('http://namenode:9870', user='root')
+    except Exception as e:
+        logger.error(f"[HDFS] 클라이언트 생성 실패: {str(e)}")
+        raise
+
+def save_to_hdfs(article_data, write_date):
+    try:
+        hdfs_client = get_hdfs_client()
+        hdfs_path = f"/realtime/news_{write_date}.json"
+        
+        # 디렉토리 존재 여부 확인 및 생성
+        if not hdfs_client.status('/realtime', strict=False):
+            hdfs_client.makedirs('/realtime')
+        
+        # 파일이 존재하는지 확인
+        file_exists = hdfs_client.status(hdfs_path, strict=False)
+        
+        # JSON 문자열로 변환
+        json_str = json.dumps(article_data, ensure_ascii=False) + "\n"
+        
+        # 파일이 존재하면 append 모드로, 없으면 새로 생성
+        with hdfs_client.write(hdfs_path, append=file_exists) as writer:
+            writer.write(json_str.encode('utf-8'))
+            
+    except Exception as e:
+        logger.error(f"[HDFS] 저장 실패: {str(e)}")
         raise
 
 def process_message(message):
     try:
         # JSON 파싱 및 Pydantic 모델로 변환
-        logger.info("="*50)
-        logger.info("새로운 메시지 처리 시작")
-        logger.info(f"메시지 내용: {message[:100]}...")
-        
         data = json.loads(message)
-        url = data.get('url', 'URL 없음')
-        logger.info(f"URL: {url}")
-        
         article = NewsArticle(**data)
-        logger.info(f"Pydantic 모델 변환 성공: {article.url}")
         
         # 카테고리, 키워드, 임베딩 변환
-        logger.info("데이터 변환 시작...")
         category = transform_classify_category(article.content)
         keywords = transform_extract_keywords(article.content)
         embedding = transform_to_embedding(article.content)
-        logger.info(f"변환 완료 - 카테고리: {category}, 키워드 수: {len(keywords)}")
         
         # DB 연결
         conn = get_db_connection()
@@ -158,11 +185,9 @@ def process_message(message):
                 # URL로 중복 체크
                 cur.execute("SELECT id FROM news_article WHERE url = %s", (article.url,))
                 if cur.fetchone() is not None:
-                    logger.info(f"이미 존재하는 기사: {article.url}")
                     return message
                 
                 # 새 기사 저장
-                logger.info(f"DB 저장 시도: {article.url}")
                 cur.execute("""
                     INSERT INTO news_article (
                         title, writer, write_date, category,
@@ -182,50 +207,42 @@ def process_message(message):
                 ))
                 inserted_id = cur.fetchone()[0] if cur.rowcount > 0 else None
                 conn.commit()
-                logger.info(f"DB 저장 완료 (ID: {inserted_id}): {article.url}")
                 
                 # Elasticsearch에 저장
                 if inserted_id:
-                    try:
-                        es = get_es_client()
-                        doc = {
-                            "title": article.title,
-                            "writer": article.writer,
-                            "write_date": article.write_date.strftime("%Y-%m-%dT%H:%M:%S"),
-                            "category": category,
-                            "content": article.content,
-                            "url": article.url,
-                            "keywords": keywords
-                        }
-                        logger.info(f"ES 저장 시도: {article.url}")
-                        response = es.index(index="news", id=inserted_id, document=doc)
-                        logger.info(f"ES 저장 완료: {article.title}")
-                        logger.info(f"ES 응답: {response}")
-                    except Exception as es_error:
-                        logger.error("="*50)
-                        logger.error(f"ES 저장 실패: {article.url}")
-                        logger.error(f"에러 타입: {type(es_error)}")
-                        logger.error(f"에러 내용: {str(es_error)}")
-                        import traceback
-                        logger.error(f"스택 트레이스:\n{traceback.format_exc()}")
-                        logger.error("="*50)
+                    es = get_es_client()
+                    doc = {
+                        "title": article.title,
+                        "writer": article.writer,
+                        "write_date": article.write_date.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "category": category,
+                        "content": article.content,
+                        "url": article.url,
+                        "keywords": keywords
+                    }
+                    es.index(index="news", id=inserted_id, document=doc)
                 
-                logger.info(f"처리 완료: {article.title}")
-                logger.info("="*50)
+                # HDFS에 저장
+                try:
+                    record = {
+                        "title": article.title,
+                        "write_date": str(article.write_date),
+                        "category": category,
+                        "content": article.content,
+                        "keywords": keywords,
+                        "url": article.url
+                    }
+                    write_date_str = article.write_date.date().isoformat()
+                    save_to_hdfs(record, write_date_str)
+                except Exception as hdfs_error:
+                    logger.error(f"[HDFS] 저장 실패: {article.url} - {str(hdfs_error)}")
+                
         finally:
             conn.close()
-            logger.info("DB 연결 종료")
         
         return message
     except Exception as e:
-        logger.error("="*50)
-        logger.error("메시지 처리 실패")
-        logger.error(f"에러 타입: {type(e)}")
-        logger.error(f"에러 내용: {str(e)}")
-        logger.error(f"메시지 내용: {message[:100]}...")
-        import traceback
-        logger.error(f"스택 트레이스:\n{traceback.format_exc()}")
-        logger.error("="*50)
+        logger.error(f"[SYSTEM] 메시지 처리 실패: {str(e)}")
         return None
 
 def main():
