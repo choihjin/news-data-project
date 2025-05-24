@@ -20,7 +20,17 @@ RUN apt-get update && apt-get install -y \
         openai==1.61.1 \
         python-dotenv==1.0.1 \
         tiktoken \
-        elasticsearch==8.17.1
+        elasticsearch==8.17.1 \
+        hdfs==2.7.3
+
+# 한글 폰트 설치
+RUN apt-get update && \
+    apt-get install -y locales && \
+    localedef -i ko_KR -f UTF-8 ko_KR.UTF-8
+
+ENV LANG=ko_KR.UTF-8
+ENV LANGUAGE=ko_KR:ko
+ENV LC_ALL=ko_KR.UTF-8
 
 USER 1001
 

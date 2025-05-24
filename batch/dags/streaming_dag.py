@@ -34,8 +34,8 @@ with DAG(
     start_date=datetime(2025, 5, 1, tzinfo=local_tz),
     catchup=False,
     tags=['flink', 'kafka'],
-    max_active_runs=1,  # 동시 실행 제한
-    concurrency=1,  # 동시 태스크 실행 제한
+    # max_active_runs=1,  # 동시 실행 제한
+    # concurrency=1,  # 동시 태스크 실행 제한
 ) as dag:
     
     start = DummyOperator(
@@ -43,21 +43,21 @@ with DAG(
     )
     
     producer_aitimes = PythonOperator(
-        task_id='producer_aitimes',
+        task_id='RSS_aitimes',
         python_callable=run_producer_aitimes,
         pool='default_pool',  # 풀 지정
         execution_timeout=timedelta(minutes=30)  # 실행 시간 제한
     )
 
     producer_hankyung = PythonOperator(
-        task_id='producer_hankyung',
+        task_id='RSS_hankyung',
         python_callable=run_producer_hankyung,
         pool='default_pool',
         execution_timeout=timedelta(minutes=30)
     )
 
     consumer = BashOperator(
-        task_id='consumer',
+        task_id='flink_consumer',
         bash_command='docker exec jobmanager flink run -py /opt/airflow/scripts/consumer.py --detached'
     )
 

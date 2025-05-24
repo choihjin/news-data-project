@@ -60,7 +60,6 @@ def get_article_content(url: str) -> str:
 def send_to_kafka(article):
     try:
         producer.send(TOPIC, value=article)
-        producer.flush()
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ✅ Kafka 전송 완료: {article['title']}")
     except Exception as e:
         print(f"❌ Kafka 전송 실패: {e}")
@@ -99,7 +98,8 @@ def main():
 
         send_to_kafka(article)
         time.sleep(0.5)  # 요청 간격을 0.5초로 줄임
-
+        
+    producer.flush()
     print("\n🛠️ Kafka Producer 작업 완료!")
 
 if __name__ == "__main__":
