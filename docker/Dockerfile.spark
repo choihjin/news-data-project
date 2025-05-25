@@ -2,19 +2,34 @@ FROM bitnami/spark:3.5.4
 
 USER root
 
-# 필수 패키지 설치
+# 필요 패키지 설치
 RUN install_packages \
-    gcc \
-    g++ \
-    make \
-    pkg-config \
-    libfreetype6-dev \
-    libpng-dev \
-    libjpeg-dev \
-    fontconfig \
-    python3-dev \
-    python3-pip \
-    fonts-nanum
+    gcc g++ make pkg-config libfreetype6-dev libpng-dev libjpeg-dev fontconfig \
+    python3-dev python3-pip fonts-nanum \
+    wget libbz2-dev libssl-dev libncurses5-dev libsqlite3-dev \
+    libreadline-dev libffi-dev zlib1g-dev liblzma-dev tk-dev xz-utils build-essential
+
+# Bitnami 기본 Python 제거 (3.12 방지)
+RUN rm -rf /opt/bitnami/python
+
+# Python 3.11 설치
+RUN cd /usr/src && \
+    wget https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz && \
+    tar xzf Python-3.11.9.tgz && \
+    cd Python-3.11.9 && \
+    ./configure --enable-optimizations && \
+    make -j$(nproc) && \
+    make altinstall
+
+# pip, python 링크 재설정
+RUN ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3 && \
+    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip
+
+# PATH 정리 및 PySpark 환경 설정
+ENV PATH="/usr/local/bin:$PATH"
+ENV PYSPARK_PYTHON=/usr/local/bin/python3.11
+ENV PYSPARK_DRIVER_PYTHON=/usr/local/bin/python3.11
 
 # 폰트 캐시 갱신
 RUN fc-cache -fv
