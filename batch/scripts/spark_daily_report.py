@@ -3,10 +3,12 @@ import argparse
 from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, ArrayType
-from pyspark.sql.functions import col, explode, count, hour, to_timestamp, when
+from pyspark.sql.functions import col, explode, count, hour, to_timestamp, when, to_json, struct
 import matplotlib.pyplot as plt
 import numpy as np
 import io
+import matplotlib.font_manager as fm
+from matplotlib.backends.backend_pdf import PdfPages
 
 # 뉴스 데이터 스키마 정의
 NEWS_SCHEMA = StructType([
@@ -19,142 +21,100 @@ NEWS_SCHEMA = StructType([
 ])
 
 def main(report_date_str):
+    print(f"시작 날짜: {report_date_str}")
+
+    FONT_PATH = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+    # HDFS 경로 설정
+    INPUT_PATH = f"hdfs://namenode:8020/realtime/news_{report_date_str}.json"
+    ARCHIVE_PATH = f"hdfs://namenode:8020/news_archive/news_{report_date_str}.json"
+    REPORT_PATH = f"/opt/airflow/data/daily_report_{report_date_str}.pdf"
+    font_prop = fm.FontProperties(fname=FONT_PATH, size=12)
+
+    spark = SparkSession.builder \
+        .appName("DailyNewsReport") \
+        .config("spark.master", "spark://spark-master:7077") \
+        .config("spark.executor.memory", "2g") \
+        .config("spark.driver.memory", "2g") \
+        .getOrCreate()
+
     try:
-        # Spark 세션 생성
-        spark = SparkSession.builder \
-            .appName("DailyNewsReport") \
-            .config("spark.master", "spark://spark-master:7077") \
-            .config("spark.executor.memory", "2g") \
-            .config("spark.driver.memory", "2g") \
-            .config("spark.sql.shuffle.partitions", "200") \
-            .config("spark.default.parallelism", "200") \
-            .config("spark.hadoop.fs.defaultFS", "hdfs://namenode:8020") \
-            .getOrCreate()
-
-        # HDFS 경로 설정
-        input_path = f"hdfs://namenode:8020/realtime/news_{report_date_str}.json"
-        archive_path = f"hdfs://namenode:8020/news_archive/news_{report_date_str}.json"
-        report_path = f"hdfs://namenode:8020/reports/daily_report_{report_date_str}.pdf"
-
-        # JSON 파일 읽기 시 옵션 추가
+        # JSON 파일 읽기 - 한 줄씩 읽기
         df = spark.read \
-            .option("maxRecordsPerFile", "100") \
             .option("multiLine", "true") \
             .option("mode", "PERMISSIVE") \
-            .option("columnNameOfCorruptRecord", "_corrupt_record") \
-            .option("samplingRatio", "1.0") \
-            .option("primitivesAsString", "true") \
-            .option("maxCharsPerColumn", "1000000") \
-            .schema(NEWS_SCHEMA) \
-            .json(input_path)
+            .json(INPUT_PATH)
         
-        # 오류 레코드 필터링
-        # df = df.filter(col("_corrupt_record").isNull())
+        df.printSchema()
+        print(f"데이터 로드 완료: {df.count()}개 기사")
 
-        # 데이터 분석
-        # 1. 키워드 분석
-        keyword_counts = df.select(explode("keywords").alias("keyword")) \
-            .groupBy("keyword") \
-            .count() \
-            .orderBy("count", ascending=False) \
-            .limit(10)
-        
-        # 2. 출처별 기사 수
-        source_counts = df.groupBy("category") \
-            .count() \
-            .orderBy("count", ascending=False)
-        
-        # 3. 시간대별 기사 수
-        hourly_counts = df.withColumn("hour", 
-            when(to_timestamp("write_date").isNotNull(), 
-                 hour(to_timestamp("write_date")))
-            .otherwise(0)) \
-            .groupBy("hour") \
-            .count() \
-            .orderBy("hour")
+        # 리포트 생성
+        with PdfPages(REPORT_PATH) as pdf:
+            # 키워드 분석
+            if "keywords" in df.columns:
+                df_kw = df.withColumn("keyword", explode(col("keywords")))
+                keyword_df = df_kw.groupBy("keyword").count().orderBy("count", ascending=False).limit(10)
+                keyword_pd = keyword_df.toPandas()
+                
+                plt.figure(figsize=(8, 5))
+                keyword_pd.plot(kind="bar", x="keyword", y="count", legend=False, color="skyblue", ax=plt.gca())
+                plt.title(f"{report_date_str} 키워드 TOP 10", fontproperties=font_prop)
+                plt.xticks(rotation=45, fontproperties=font_prop)
+                plt.tight_layout()
+                pdf.savefig()
+                plt.close()
 
-        # 그래프 스타일 설정 추가
-        plt.style.use('ggplot')  # 더 현대적인 스타일 적용
+            # 카테고리별 기사 수
+            if "category" in df.columns:
+                category_df = df.groupBy("category").count().orderBy("count", ascending=False)
+                category_pd = category_df.toPandas()
 
-        import matplotlib.font_manager as fm
-        font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'  # 실제 경로 확인 필요
-        fontprop = fm.FontProperties(fname=font_path)
-        plt.rc('font', family=fontprop.get_name())
+                plt.figure(figsize=(8, 5))
+                category_pd.plot(kind="bar", x="category", y="count", legend=False, color="orange", ax=plt.gca())
+                plt.title(f"{report_date_str} 카테고리별 기사 수", fontproperties=font_prop)
+                plt.xticks(rotation=45, fontproperties=font_prop)
+                plt.tight_layout()
+                pdf.savefig()
+                plt.close()
 
-        # 그래프 생성
-        plt.figure(figsize=(15, 10))
-        
-        # 1. 키워드 분석 그래프
-        plt.subplot(3, 1, 1)
-        keyword_data = keyword_counts.collect()
-        keywords = [row['keyword'] for row in keyword_data]
-        counts = [int(row['count']) for row in keyword_data]
-        x = np.arange(len(keywords))
-        plt.bar(x, counts, color='skyblue')
-        plt.xticks(x, keywords, rotation=45, ha='right')
-        plt.title('상위 10개 키워드', pad=20)
-        plt.grid(True, alpha=0.3)
-        
-        # 2. 카테고리별 기사 수 그래프
-        plt.subplot(3, 1, 2)
-        source_data = source_counts.collect()
-        categories = [row['category'] for row in source_data]
-        counts = [int(row['count']) for row in source_data]
-        x = np.arange(len(categories))
-        plt.bar(x, counts, color='lightgreen')
-        plt.xticks(x, categories, rotation=45, ha='right')
-        plt.title('카테고리별 기사 수', pad=20)
-        plt.grid(True, alpha=0.3)
-        
-        # 3. 시간대별 기사 수 그래프
-        plt.subplot(3, 1, 3)
-        hourly_data = hourly_counts.collect()
-        hours = [int(row['hour']) for row in hourly_data]
-        counts = [int(row['count']) for row in hourly_data]
-        plt.plot(hours, counts, marker='o', color='coral', linewidth=2)
-        plt.title('시간대별 기사 수', pad=20)
-        plt.xlabel('시간')
-        plt.ylabel('기사 수')
-        plt.grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        
-        # 그래프를 바이트로 저장
-        buffer = io.BytesIO()
-        plt.savefig(buffer, format='pdf')
-        buffer.seek(0)
-        pdf_data = buffer.getvalue()
-        buffer.close()
+            # 시간대별 기사 수
+            if "write_date" in df.columns:
+                df = df.withColumn("hour", col("write_date").substr(12, 2))
+                hour_df = df.groupBy("hour").count().orderBy("hour")
+                hour_pd = hour_df.toPandas()
 
-        # PDF를 HDFS와 로컬에 저장
-        try:
-            # HDFS에 저장
-            spark.sparkContext.parallelize([pdf_data]).saveAsTextFile(report_path)
-            print(f"HDFS 리포트 저장 완료: {report_path}")
-            
-            # 로컬 data 디렉토리에 저장
-            local_report_path = f"/opt/airflow/data/daily_report_{report_date_str}.pdf"
-            with open(local_report_path, 'wb') as f:
-                f.write(pdf_data)
-            print(f"로컬 리포트 저장 완료: {local_report_path}")
-        except Exception as e:
-            print(f"리포트 저장 실패:d {str(e)}")
-            raise
+                plt.figure(figsize=(8, 5))
+                hour_pd.plot(kind="bar", x="hour", y="count", legend=False, color="green", ax=plt.gca())
+                plt.title(f"{report_date_str} 시간대별 기사 수", fontproperties=font_prop)
+                plt.xticks(rotation=0, fontproperties=font_prop)
+                plt.tight_layout()
+                pdf.savefig()
+                plt.close()
 
-        # 원본 데이터를 아카이브로 이동
-        try:
-            df.write.mode("overwrite").json(archive_path)
-            print(f"데이터 아카이브 완료: {archive_path}")
-        except Exception as e:
-            print(f"데이터 아카이브 실패: {str(e)}")
-            raise
+        print(f"리포트 저장 완료: {REPORT_PATH}")
+
+        # HDFS 파일 아카이빙 (줄 단위 JSON으로 저장)
+        df.select(to_json(struct([col(c) for c in df.columns])).alias("value")) \
+            .write \
+            .mode("append") \
+            .option("compression", "none") \
+            .text(ARCHIVE_PATH)
+        print("원본 파일 아카이빙 완료.")
+
+        # 원본 파일 삭제
+        spark._jsc.hadoopConfiguration().set("fs.hdfs.impl", "org.apache.hadoop.hdfs.DistributedFileSystem")
+        spark._jsc.hadoopConfiguration().set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem")
+        fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
+        fs.delete(spark._jvm.org.apache.hadoop.fs.Path(INPUT_PATH), True)
+        print("원본 파일 삭제 완료.")
 
     except Exception as e:
-        print(f"오류 발생: {str(e)}")
+        print("처리 중 오류 발생:", e)
         raise
+    finally:
+        spark.stop()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='일일 뉴스 리포트 생성')
-    parser.add_argument('--date', required=True, help='리포트 날짜 (YYYY-MM-DD)')
+    parser = argparse.ArgumentParser(description="Spark를 이용한 일일 뉴스 리포트 생성")
+    parser.add_argument("--date", required=True, help="보고서 기준 날짜 (YYYY-MM-DD)")
     args = parser.parse_args()
     main(args.date) 
