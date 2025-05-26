@@ -20,6 +20,75 @@ NEWS_SCHEMA = StructType([
     StructField("url", StringType(), True)
 ])
 
+def append_or_create_json(df, spark, report_date_str):
+    ARCHIVE_PATH = f"/news_archive/news_{report_date_str}.json"
+    full_path = f"hdfs://namenode:8020{ARCHIVE_PATH}"
+
+    fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
+    Path = spark._jvm.org.apache.hadoop.fs.Path
+    archive_path = Path(full_path)
+
+    try:
+        if fs.exists(archive_path):
+            print(f"기존 아카이브 파일 존재: {ARCHIVE_PATH}")
+            existing_df = spark.read.json(full_path)
+            merged_df = existing_df.unionByName(df)
+        else:
+            print(f"신규 아카이브 파일 생성: {ARCHIVE_PATH}")
+            merged_df = df
+
+        # 디렉토리에 우선 저장
+        tmp_dir = ARCHIVE_PATH + "_tmp"
+        tmp_full_path = f"hdfs://namenode:8020{tmp_dir}"
+
+        merged_df.select(to_json(struct([col(c) for c in merged_df.columns])).alias("value")) \
+            .coalesce(1) \
+            .write \
+            .mode("overwrite") \
+            .json(tmp_full_path)
+
+        print("임시 파일 저장 완료")
+        return tmp_dir  # 임시 디렉토리 경로 리턴
+    except Exception as e:
+        print("아카이브 저장 중 오류 발생:", e)
+        raise
+
+
+def save_single_json(spark, tmp_dir_path, final_file_path):
+    """
+    tmp_dir_path: '/news_archive/news_2025-05-26.json_tmp'
+    final_file_path: '/news_archive/news_2025-05-26.json'
+    """
+    hdfs_prefix = "hdfs://namenode:8020"
+    tmp_path = f"{hdfs_prefix}{tmp_dir_path}"
+    final_path = f"{hdfs_prefix}{final_file_path}"
+
+    fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
+    Path = spark._jvm.org.apache.hadoop.fs.Path
+
+    tmp_path_obj = Path(tmp_path)
+    final_path_obj = Path(final_path)
+
+    file_list = fs.listStatus(tmp_path_obj)
+    found = False
+    for file_status in file_list:
+        name = file_status.getPath().getName()
+        if name.startswith("part-") and name.endswith(".json"):
+            part_file = file_status.getPath()
+            if fs.exists(final_path_obj):
+                fs.delete(final_path_obj, False)
+            fs.rename(part_file, final_path_obj)
+            print(f"최종 파일 저장 완료: {final_file_path}")
+            found = True
+            break
+
+    if not found:
+        raise Exception("part-0000 파일을 찾을 수 없음")
+
+    fs.delete(tmp_path_obj, True)
+    print("임시 디렉토리 삭제 완료")
+
+
 def main(report_date_str):
     print(f"시작 날짜: {report_date_str}")
 
@@ -28,6 +97,7 @@ def main(report_date_str):
     INPUT_PATH = f"hdfs://namenode:8020/realtime/news_{report_date_str}.json"
     ARCHIVE_PATH = f"hdfs://namenode:8020/news_archive/news_{report_date_str}.json"
     REPORT_PATH = f"/opt/airflow/data/daily_report_{report_date_str}.pdf"
+    HDFS_REPORT_PATH = f"hdfs://namenode:8020/reports/daily_report_{report_date_str}.pdf"
     font_prop = fm.FontProperties(fname=FONT_PATH, size=12)
 
     spark = SparkSession.builder \
@@ -40,8 +110,9 @@ def main(report_date_str):
     try:
         # JSON 파일 읽기 - 한 줄씩 읽기
         df = spark.read \
-            .option("multiLine", "true") \
+            .option("multiLine", "false") \
             .option("mode", "PERMISSIVE") \
+            .schema(NEWS_SCHEMA) \
             .json(INPUT_PATH)
         
         df.printSchema()
@@ -92,13 +163,25 @@ def main(report_date_str):
 
         print(f"리포트 저장 완료: {REPORT_PATH}")
 
-        # HDFS 파일 아카이빙 (줄 단위 JSON으로 저장)
-        df.select(to_json(struct([col(c) for c in df.columns])).alias("value")) \
-            .write \
-            .mode("append") \
-            .option("compression", "none") \
-            .text(ARCHIVE_PATH)
-        print("원본 파일 아카이빙 완료.")
+        # HDFS에 PDF 리포트 저장
+        fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
+        Path = spark._jvm.org.apache.hadoop.fs.Path
+        
+        # reports 디렉토리 생성
+        reports_dir = Path("hdfs://namenode:8020/reports")
+        if not fs.exists(reports_dir):
+            fs.mkdirs(reports_dir)
+        
+        # 로컬 PDF 파일을 HDFS로 복사
+        local_path = Path(REPORT_PATH)
+        hdfs_path = Path(HDFS_REPORT_PATH)
+        fs.copyFromLocalFile(False, True, local_path, hdfs_path)
+        print(f"HDFS 리포트 저장 완료: {HDFS_REPORT_PATH}")
+
+        # HDFS 파일 아카이빙 (JSON 형식으로 저장)
+        tmp_dir_path = append_or_create_json(df, spark, report_date_str)
+        ARCHIVE_PATH_SHORT = f"/news_archive/news_{report_date_str}.json"
+        save_single_json(spark, tmp_dir_path, ARCHIVE_PATH_SHORT)
 
         # 원본 파일 삭제
         spark._jsc.hadoopConfiguration().set("fs.hdfs.impl", "org.apache.hadoop.hdfs.DistributedFileSystem")
