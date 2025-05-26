@@ -3,6 +3,7 @@ from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import psycopg2
 from elasticsearch import Elasticsearch
+import os
 
 # DAG 기본 설정
 default_args = {
@@ -16,11 +17,11 @@ default_args = {
 def sync_postgres_to_es():
     # PostgreSQL 연결
     pg_conn = psycopg2.connect(
-        host="192.168.210.75",
-        dbname="news",
-        user="ssafyuser",
-        password="ssafy",
-        port="5432"
+        host = 'postgres',
+        dbname = 'news',
+        user = os.getenv('POSTGRES_USER'),
+        password = os.getenv('POSTGRES_PASSWORD'),
+        port = os.getenv('POSTGRES_PORT')
     )
     pg_cursor = pg_conn.cursor()
 

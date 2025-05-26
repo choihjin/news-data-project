@@ -17,12 +17,13 @@ RUN cd /usr/src && \
     wget https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz && \
     tar xzf Python-3.11.9.tgz && \
     cd Python-3.11.9 && \
-    ./configure --enable-optimizations && \
+    ./configure --enable-optimizations --prefix=/usr/local && \
     make -j$(nproc) && \
-    make altinstall
+    make install
 
 # pip, python 링크 재설정
-RUN ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && \
+RUN ln -sf /usr/local/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3 && \
     ln -sf /usr/local/bin/pip3.11 /usr/bin/pip
 
@@ -30,6 +31,7 @@ RUN ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && \
 ENV PATH="/usr/local/bin:$PATH"
 ENV PYSPARK_PYTHON=/usr/local/bin/python3.11
 ENV PYSPARK_DRIVER_PYTHON=/usr/local/bin/python3.11
+ENV PYTHONPATH="/usr/local/lib/python3.11/site-packages:$PYTHONPATH"
 
 # 폰트 캐시 갱신
 RUN fc-cache -fv
@@ -42,5 +44,11 @@ RUN pip install --upgrade pip && \
     matplotlib==3.8.3 \
     seaborn==0.13.2 \
     reportlab==4.1.0
+
+# Spark 설정 파일 수정
+RUN echo "spark.python.worker.reuse=true" >> /opt/bitnami/spark/conf/spark-defaults.conf && \
+    echo "spark.python.use.daemon=true" >> /opt/bitnami/spark/conf/spark-defaults.conf && \
+    echo "spark.python.worker.memory=512m" >> /opt/bitnami/spark/conf/spark-defaults.conf && \
+    echo "spark.executor.extraClassPath=/usr/local/lib/python3.11/site-packages" >> /opt/bitnami/spark/conf/spark-defaults.conf
 
 USER 1001
