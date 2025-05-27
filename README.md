@@ -30,27 +30,22 @@
 ## 🛠️ 기술 스택
 
 ### 📥 Data Collection & Processing
-- <img src="https://img.shields.io/badge/Apache_Kafka-231F20?style=flat-square&logo=apache-kafka&logoColor=white" height="20"/>
-- <img src="https://img.shields.io/badge/Apache_Flink-E6526F?style=flat-square&logo=apache-flink&logoColor=white" height="20"/>
-- <img src="https://img.shields.io/badge/Apache_Spark-E25A1C?style=flat-square&logo=apache-spark&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Apache_Kafka-231F20?style=flat-square&logo=apache-kafka&logoColor=white" height="20"/>
+ <img src="https://img.shields.io/badge/Apache_Flink-E6526F?style=flat-square&logo=apache-flink&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Apache_Spark-E25A1C?style=flat-square&logo=apache-spark&logoColor=white" height="20"/>
 
 ### 📦 Storage
-- <img src="https://img.shields.io/badge/PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white" height="20"/>
-- <img src="https://img.shields.io/badge/Elasticsearch-005571?style=flat-square&logo=elasticsearch&logoColor=white" height="20"/>
-- <img src="https://img.shields.io/badge/Apache_Hadoop-FFD900?style=flat-square&logo=apache-hadoop&logoColor=black" height="20"/>
+<img src="https://img.shields.io/badge/PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Elasticsearch-005571?style=flat-square&logo=elasticsearch&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Apache_Hadoop-FFD900?style=flat-square&logo=apache-hadoop&logoColor=black" height="20"/>
 
 ### 🤖 Embedding & NLP
-- <img src="https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white" height="20"/>
-- <img src="https://img.shields.io/badge/KoNLPy-000000?style=flat-square&logo=python&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/KoNLPy-000000?style=flat-square&logo=python&logoColor=white" height="20"/>
 
 ### 🔄 Orchestration & Infrastructure
-- <img src="https://img.shields.io/badge/Apache_Airflow-017CEE?style=flat-square&logo=apache-airflow&logoColor=white" height="20"/>
-- <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" height="20"/> <img src="https://img.shields.io/badge/Docker_Compose-2496ED?style=flat-square&logo=docker&logoColor=white" height="20"/>
-
-### 💻 Programming Languages
-- <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" height="20"/>
-
-- <img src="https://img.shields.io/badge/SQL-4479A1?style=flat-square&logo=sql&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Apache_Airflow-017CEE?style=flat-square&logo=apache-airflow&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" height="20"/>
 
 ## 핵심 알고리즘
 
@@ -106,7 +101,8 @@
 ├── batch/                    # 배치 처리 관련 코드
 │   ├── dags/                # Airflow DAG 정의
 │   │   ├── daily_report_dag.py
-│   │   └── sync_postgres_to_es.py
+│   │   ├── sync_postgres_to_es.py
+│   │   └── streaming_dag.py  # 실시간 뉴스 수집 DAG
 │   ├── scripts/             # 실행 스크립트
 │   │   ├── spark_daily_report.py
 │   │   ├── consumer.py
@@ -117,6 +113,7 @@
 │   │   ├── preprocess.py
 │   │   ├── producer_aitimes.py
 │   │   ├── producer_hankyung.py
+│   │   ├── producer_etnews.py 
 │   │   └── config/
 │   ├── data/               # 데이터 저장소
 │   │   └── daily_reports/
@@ -125,10 +122,18 @@
 ├── docker/                # Docker 관련 파일
 │   ├── Dockerfile.airflow
 │   ├── Dockerfile.spark
-│   └── Dockerfile.flink
-├── .env                   # 환경 변수 설정
-├── docker-compose.yml     # Docker Compose 설정
-└── requirements.txt       # Python 패키지 의존성
+│   ├── Dockerfile.flink
+│   ├── requirements.txt   # Python 패키지 의존성
+│   ├── flink-conf.yaml    # Flink 설정 파일
+│   └── flink-entrypoint.sh # Flink 실행 스크립트
+├── hadoop/               # Hadoop 관련 설정 및 파일
+├── img/                 # 이미지 파일 저장소
+├── setup/              # 초기 설정 스크립트
+├── test.py            # 테스트 스크립트
+├── .env               # 환경 변수 설정
+├── .gitignore        # Git 무시 파일 목록
+├── docker-compose.yaml # Docker Compose 설정
+└── requirements.txt    # Python 패키지 의존성
 ```
 
 ## 설치 및 실행
@@ -142,12 +147,20 @@ cd news-data-project
 # 환경 변수 설정
 vi .env
 # 필요한 환경 변수:
-# - OPENAI_API_KEY
-# - POSTGRES_DB
-# - POSTGRES_USER
-# - POSTGRES_PASSWORD
-# - ELASTICSEARCH_URL
-# - KAFKA_BOOTSTRAP_SERVERS
+# - OPENAI_API_KEY: OpenAI API 키 (텍스트 임베딩 및 분석에 사용)
+# - DB_USERNAME: PostgreSQL 사용자 이름 (데이터베이스 접근용)
+# - DB_PASSWORD: PostgreSQL 비밀번호 (데이터베이스 접근용)
+# - POSTGRES_PORT: PostgreSQL 포트 번호 (기본값: 5432)
+# - AIRFLOW_UID: Airflow 사용자 ID (기본값: 50000)
+# - KAFKA_NODE_ID: Kafka 노드 식별자 (클러스터 내 고유 ID)
+# - KAFKA_BROKER_PORT: Kafka 브로커 포트 (기본값: 9092)
+# - KAFKA_CONTROLLER_PORT: Kafka 컨트롤러 포트 (기본값: 9093)
+# - KAFKA_CLUSTER_ID: Kafka 클러스터 식별자 (클러스터 고유 ID)
+# - SMTP_HOST: SMTP 서버 호스트 (이메일 알림 발송용)
+# - SMTP_PORT: SMTP 서버 포트 (기본값: 587)
+# - SMTP_USER: SMTP 사용자 이메일
+# - SMTP_PASSWORD: SMTP 사용자 비밀번호
+# - SMTP_MAIL_FROM: 발신자 이메일 주소
 ```
 
 ### 2. Docker 실행
