@@ -2,7 +2,7 @@
 실시간 뉴스 데이터를 수집하고, 텍스트 임베딩 기반으로 유사 뉴스 추천 및 인사이트 분석이 가능한 플랫폼을 구축합니다.
 
 ## 🏗️ 전체 아키텍처
-![alt text](img/pipeline.png)
+![alt text](imgs/pipeline.png)
 
 ## 주요 기능
 ### 1. 실시간 뉴스 수집
@@ -206,6 +206,8 @@ airflow dags trigger daily_report_dag
 - 검색 성능 및 쿼리 응답 시간
 - 데이터 수집 및 색인 현황
 
+![Kibana 대시보드](imgs/kibana.png)
+
 ### ⚡ 실시간 처리 모니터링
 - <img src="https://img.shields.io/badge/Flink_JobManager-E6526F?style=flat-square&logo=apache-flink&logoColor=white" height="20"/> 
 - Flink 작업 모니터링
@@ -219,6 +221,8 @@ airflow dags trigger daily_report_dag
 - CPU, 메모리, 디스크 사용량
 - 네트워크 트래픽 및 대역폭
 - 컨테이너별 리소스 사용 현황
+
+![Grafana 대시보드](imgs/grafana.png)
 
 ### 🔔 알림 설정
 - Slack 웹훅을 통한 실시간 알림
