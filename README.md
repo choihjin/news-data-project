@@ -30,22 +30,16 @@
 ## 🛠️ 기술 스택
 
 ### 📥 Data Collection & Processing
-<img src="https://img.shields.io/badge/Apache_Kafka-231F20?style=flat-square&logo=apache-kafka&logoColor=white" height="20"/>
- <img src="https://img.shields.io/badge/Apache_Flink-E6526F?style=flat-square&logo=apache-flink&logoColor=white" height="20"/>
-<img src="https://img.shields.io/badge/Apache_Spark-E25A1C?style=flat-square&logo=apache-spark&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Apache_Kafka-231F20?style=flat-square&logo=apache-kafka&logoColor=white" height="20"/> <img src="https://img.shields.io/badge/Apache_Flink-E6526F?style=flat-square&logo=apache-flink&logoColor=white" height="20"/> <img src="https://img.shields.io/badge/Apache_Spark-E25A1C?style=flat-square&logo=apache-spark&logoColor=white" height="20"/>
 
 ### 📦 Storage
-<img src="https://img.shields.io/badge/PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white" height="20"/>
-<img src="https://img.shields.io/badge/Elasticsearch-005571?style=flat-square&logo=elasticsearch&logoColor=white" height="20"/>
-<img src="https://img.shields.io/badge/Apache_Hadoop-FFD900?style=flat-square&logo=apache-hadoop&logoColor=black" height="20"/>
+<img src="https://img.shields.io/badge/PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white" height="20"/> <img src="https://img.shields.io/badge/Elasticsearch-005571?style=flat-square&logo=elasticsearch&logoColor=white" height="20"/> <img src="https://img.shields.io/badge/Apache_Hadoop-FFD900?style=flat-square&logo=apache-hadoop&logoColor=black" height="20"/>
 
 ### 🤖 Embedding & NLP
-<img src="https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white" height="20"/>
-<img src="https://img.shields.io/badge/KoNLPy-000000?style=flat-square&logo=python&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white" height="20"/> <img src="https://img.shields.io/badge/KoNLPy-000000?style=flat-square&logo=python&logoColor=white" height="20"/>
 
 ### 🔄 Orchestration & Infrastructure
-<img src="https://img.shields.io/badge/Apache_Airflow-017CEE?style=flat-square&logo=apache-airflow&logoColor=white" height="20"/>
-<img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" height="20"/>
+<img src="https://img.shields.io/badge/Apache_Airflow-017CEE?style=flat-square&logo=apache-airflow&logoColor=white" height="20"/> <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" height="20"/>
 
 ## 핵심 알고리즘
 
@@ -186,21 +180,18 @@ airflow dags trigger daily_report_dag
 ## 📊 모니터링 및 관리
 
 ### 🔄 워크플로우 모니터링
-- <img src="https://img.shields.io/badge/Airflow_UI-017CEE?style=flat-square&logo=apache-airflow&logoColor=white" height="20"/> 
 - DAG 실행 상태 및 로그 모니터링
 - DAG 실행 이력 및 성공/실패 현황
 - 태스크별 실행 시간 및 리소스 사용량
 - 실시간 로그 확인 및 디버깅
 
 ### 📨 메시지 큐 모니터링
-- <img src="https://img.shields.io/badge/Kafka_Manager-231F20?style=flat-square&logo=apache-kafka&logoColor=white" height="20"/> 
 - Kafka 클러스터 상태 모니터링
 - 토픽별 메시지 처리량 및 지연 현황
 - 컨슈머 그룹 상태 및 오프셋 관리
 - 브로커 상태 및 리소스 사용량
 
 ### 🔍 검색 및 분석 모니터링
-- <img src="https://img.shields.io/badge/Kibana-005571?style=flat-square&logo=kibana&logoColor=white" height="20"/> 
 - Elasticsearch 클러스터 모니터링
 - 인덱스 상태 및 샤드 분배 현황
 - 검색 성능 및 쿼리 응답 시간
@@ -209,14 +200,12 @@ airflow dags trigger daily_report_dag
 ![Kibana 대시보드](imgs/kibana.png)
 
 ### ⚡ 실시간 처리 모니터링
-- <img src="https://img.shields.io/badge/Flink_JobManager-E6526F?style=flat-square&logo=apache-flink&logoColor=white" height="20"/> 
 - Flink 작업 모니터링
 - 작업 실행 상태 및 백프레셔 현황
 - 연산자별 처리량 및 지연 시간
 - 체크포인트 및 장애 복구 상태
 
 ### 📈 시스템 메트릭 모니터링
-- <img src="https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white" height="20"/> 
 - 시스템 리소스 모니터링
 - CPU, 메모리, 디스크 사용량
 - 네트워크 트래픽 및 대역폭
