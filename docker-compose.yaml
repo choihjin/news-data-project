@@ -455,6 +455,21 @@ services:
       - ./batch/scripts/config/flink-sql-connector-kafka-3.3.0-1.20.jar:/opt/bitnami/flink/lib/flink-connector-kafka.jar
     networks:
       - shared-net
+
+  flink-job-submit:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.flink
+    container_name: flink-job-submit
+    depends_on:
+      - jobmanager
+    volumes:
+      - ./batch/scripts:/opt/airflow/scripts
+      - ./docker/flink-entrypoint.sh:/flink-entrypoint.sh
+      - ./batch/scripts/config/flink-sql-connector-kafka-3.3.0-1.20.jar:/opt/bitnami/flink/lib/flink-connector-kafka.jar
+    entrypoint: ["bash", "/flink-entrypoint.sh"]
+    networks:
+      - shared-net
     
 volumes:
   postgres_data:

@@ -4,8 +4,6 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.operators.email import EmailOperator
-from airflow.operators.python import PythonOperator
-from airflow.operators.dummy import DummyOperator
 from pyspark.sql import SparkSession
 
 local_tz = pendulum.timezone("Asia/Seoul")
@@ -29,8 +27,6 @@ with DAG(
     catchup=False,
     tags=['daily', 'report', 'spark']
 ) as dag:
-    start = DummyOperator(task_id='start')
-
     submit_spark_job = SparkSubmitOperator(
         task_id='spark_daily_report',
         application='/opt/airflow/scripts/spark_daily_report.py',
@@ -64,6 +60,4 @@ with DAG(
         mime_charset='utf-8'
     )
 
-    end = DummyOperator(task_id='end')
-
-    start >> submit_spark_job >> notify_report_generated >> send_email >> end
+    submit_spark_job >> notify_report_generated >> send_email

@@ -26,6 +26,12 @@ def run_producer_hankyung():
     from producer_hankyung import main
     main()
 
+def run_producer_etnews():
+    import sys
+    sys.path.append('/opt/airflow/scripts')
+    from producer_etnews import main
+    main()
+
 with DAG(
     dag_id='news_collect_streaming',
     default_args=default_args,
@@ -44,12 +50,19 @@ with DAG(
         task_id='RSS_aitimes',
         python_callable=run_producer_aitimes,
         pool='default_pool',  # 풀 지정
-        execution_timeout=timedelta(minutes=30)  # 실행 시간 제한
+        execution_timeout=timedelta(minutes=30)
     )
 
     producer_hankyung = PythonOperator(
         task_id='RSS_hankyung',
         python_callable=run_producer_hankyung,
+        pool='default_pool',
+        execution_timeout=timedelta(minutes=30)
+    )
+
+    producer_etnews = PythonOperator(
+        task_id='RSS_etnews',
+        python_callable=run_producer_etnews,
         pool='default_pool',
         execution_timeout=timedelta(minutes=30)
     )
@@ -63,4 +76,4 @@ with DAG(
         task_id='end'
     )
 
-    start >> [producer_aitimes, producer_hankyung] >> end
+    start >> [producer_aitimes, producer_hankyung, producer_etnews] >> end
