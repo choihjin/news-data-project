@@ -419,6 +419,7 @@ services:
     container_name: jobmanager
     ports:
       - "8081:8081"
+      - "9250:9250"
     environment:
       - FLINK_MODE=jobmanager
       - FLINK_JOB_MANAGER_RPC_ADDRESS=jobmanager
@@ -470,6 +471,29 @@ services:
     entrypoint: ["bash", "/flink-entrypoint.sh"]
     networks:
       - shared-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - shared-net
+    depends_on:
+      - jobmanager
+      - prometheus
+  
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - shared-net
     
 volumes:
   postgres_data:
@@ -479,6 +503,7 @@ volumes:
   flink_taskmanager_data:
   datanode:
   esdata:
+  grafana_data:
 
 networks:
   shared-net:

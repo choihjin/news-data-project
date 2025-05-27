@@ -7,3 +7,8 @@ taskmanager.memory.process.size: 1024m
 
 # 슬롯 수
 taskmanager.numberOfTaskSlots: 2
+
+# Prometheus 메트릭 수집
+metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+metrics.reporter.prom.port: 9250
+metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
