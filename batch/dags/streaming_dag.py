@@ -30,12 +30,10 @@ with DAG(
     dag_id='news_collect_streaming',
     default_args=default_args,
     description='Flink를 이용해 뉴스 데이터를 수집하고 처리',
-    schedule_interval='0 1 * * *',
+    schedule_interval=timedelta(hours=1),
     start_date=datetime(2025, 5, 1, tzinfo=local_tz),
     catchup=False,
     tags=['flink', 'kafka'],
-    # max_active_runs=1,  # 동시 실행 제한
-    # concurrency=1,  # 동시 태스크 실행 제한
 ) as dag:
     
     start = DummyOperator(
@@ -56,13 +54,13 @@ with DAG(
         execution_timeout=timedelta(minutes=30)
     )
 
-    consumer = BashOperator(
-        task_id='flink_consumer',
-        bash_command='docker exec jobmanager flink run -py /opt/airflow/scripts/consumer.py --detached'
-    )
+    # consumer = BashOperator(
+    #     task_id='flink_consumer',
+    #     bash_command='docker exec jobmanager flink run -py /opt/airflow/scripts/consumer.py --detached'
+    # )
 
     end = DummyOperator(
         task_id='end'
     )
 
-    start >> [producer_aitimes, producer_hankyung] >> consumer >> end
+    start >> [producer_aitimes, producer_hankyung] >> end

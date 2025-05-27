@@ -406,6 +406,7 @@ services:
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=${KAFKA_NODE_ID}@kafka:${KAFKA_CONTROLLER_PORT}
       - KAFKA_KRAFT_CLUSTER_ID=${KAFKA_CLUSTER_ID}
       - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_NUM_PARTITIONS=2
     volumes:
       - kafka_data:/bitnami/kafka
     networks:

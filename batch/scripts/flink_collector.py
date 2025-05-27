@@ -248,6 +248,8 @@ def process_message(message):
 def main():
     # Flink 실행 환경 설정
     env = StreamExecutionEnvironment.get_execution_environment()
+
+    env.set_parallelism(2)
     
     # Kafka Consumer 설정
     kafka_props = {
