@@ -26,16 +26,20 @@ def run_producer_hankyung():
     from producer_hankyung import main
     main()
 
+def run_producer_etnews():
+    import sys
+    sys.path.append('/opt/airflow/scripts')
+    from producer_etnews import main
+    main()
+
 with DAG(
     dag_id='news_collect_streaming',
     default_args=default_args,
     description='Flink를 이용해 뉴스 데이터를 수집하고 처리',
-    schedule_interval='0 1 * * *',
+    schedule_interval=timedelta(hours=1),
     start_date=datetime(2025, 5, 1, tzinfo=local_tz),
     catchup=False,
     tags=['flink', 'kafka'],
-    # max_active_runs=1,  # 동시 실행 제한
-    # concurrency=1,  # 동시 태스크 실행 제한
 ) as dag:
     
     start = DummyOperator(
@@ -46,7 +50,7 @@ with DAG(
         task_id='RSS_aitimes',
         python_callable=run_producer_aitimes,
         pool='default_pool',  # 풀 지정
-        execution_timeout=timedelta(minutes=30)  # 실행 시간 제한
+        execution_timeout=timedelta(minutes=30)
     )
 
     producer_hankyung = PythonOperator(
@@ -56,13 +60,20 @@ with DAG(
         execution_timeout=timedelta(minutes=30)
     )
 
-    consumer = BashOperator(
-        task_id='flink_consumer',
-        bash_command='docker exec jobmanager flink run -py /opt/airflow/scripts/consumer.py --detached'
+    producer_etnews = PythonOperator(
+        task_id='RSS_etnews',
+        python_callable=run_producer_etnews,
+        pool='default_pool',
+        execution_timeout=timedelta(minutes=30)
     )
+
+    # consumer = BashOperator(
+    #     task_id='flink_consumer',
+    #     bash_command='docker exec jobmanager flink run -py /opt/airflow/scripts/consumer.py --detached'
+    # )
 
     end = DummyOperator(
         task_id='end'
     )
 
-    start >> [producer_aitimes, producer_hankyung] >> consumer >> end
+    start >> [producer_aitimes, producer_hankyung, producer_etnews] >> end

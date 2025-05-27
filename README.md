@@ -212,3 +212,8 @@ airflow dags trigger daily_report_dag
 - DAG 실패 알림
 - 시스템 리소스 임계치 초과 알림
 - 데이터 처리 지연 알림
+
+## 📚 관련 저장소
+- Frontend: https://github.com/choihjin/news-front-project
+- Backend: https://github.com/choihjin/news-back-project
+- Data Pipeline: https://github.com/choihjin/news-data-project

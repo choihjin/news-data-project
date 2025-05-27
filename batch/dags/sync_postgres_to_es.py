@@ -9,7 +9,7 @@ import os
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2025, 5, 16),
+    'start_date': datetime(2025, 5, 1),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
@@ -19,9 +19,9 @@ def sync_postgres_to_es():
     pg_conn = psycopg2.connect(
         host = 'postgres',
         dbname = 'news',
-        user = os.getenv('POSTGRES_USER'),
-        password = os.getenv('POSTGRES_PASSWORD'),
-        port = os.getenv('POSTGRES_PORT')
+        user = os.getenv('DB_USERNAME'),
+        password = os.getenv('DB_PASSWORD'),
+        port = 5432
     )
     pg_cursor = pg_conn.cursor()
 

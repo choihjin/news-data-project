@@ -42,7 +42,7 @@ def get_article_content(url: str) -> str:
             if text and not any(skip in text.lower() for skip in [
                 '▶', '©', '저작권자', '무단전재', '배포금지', '▼', 
                 '관련기사', '기자', '특파원', '뉴스', '보도', '제보', 
-                '문의', '연락처', '이메일'
+                '문의', '연락처', '이메일', '사진', '영상'
             ]):
                 # 불필요한 공백 제거 및 문장 정리
                 text = ' '.join(text.split())
