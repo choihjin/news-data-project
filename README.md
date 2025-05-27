@@ -4,6 +4,13 @@
 ## 🏗️ 전체 아키텍처
 ![alt text](imgs/pipeline.png)
 
+## 🔄 Airflow DAG 구조
+### 실시간 뉴스 수집 DAG
+![alt text](imgs/kafka_dag.png)
+
+### 일간 리포트 생성 DAG
+![alt text](imgs/spark_dag.png)
+
 ## 주요 기능
 ### 1. 실시간 뉴스 수집
 - RSS 피드를 통한 실시간 뉴스 데이터 수집
